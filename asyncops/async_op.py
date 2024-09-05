@@ -8,7 +8,9 @@
 """
 import atexit
 import hashlib
+import inspect
 import os
+import re
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from functools import partial, wraps
@@ -105,14 +107,10 @@ def _generate_cache_key(func: Callable, *args, **kwargs) -> str:
         """
         Serialize function types, partial objects, and other objects into a string representation.
         """
-        if isinstance(obj, MethodType):
-            # If the method is bound to a class, return the class and method name
-            return f"{obj.__self__.__class__.__module__}.{obj.__self__.__class__.__qualname__}.{obj.__name__}"
 
-        # For function types, return module and qualified name
-        if isinstance(obj, FunctionType):
-            return f"{obj.__module__}.{obj.__qualname__}"
-
+        if isinstance(obj, (FunctionType, MethodType)):
+            # For functions and methods, include the source code
+            return f"{obj.__module__}.{obj.__qualname__}:{_get_function_code(obj)}"
         # For partial objects, serialize both the function and its arguments
         if isinstance(obj, partial):
             func_str = serialize(obj.func)  # Recursively serialize the function
@@ -122,6 +120,33 @@ def _generate_cache_key(func: Callable, *args, **kwargs) -> str:
 
         # For all other objects, use str as fallback
         return str(obj)
+
+    def _get_function_code(func):
+        """
+        Get the function's source code, excluding comments and docstrings.
+        """
+        try:
+            source = inspect.getsource(func)
+            # Remove comments and docstrings (this is a simplistic approach and might need refinement)
+            lines = [line for line in source.split('\n') if
+                     not line.strip().startswith('#') and not line.strip().startswith('"""')]
+            return _strip_comments_and_whitespace('\n'.join(lines))
+        except OSError:
+            # If the source code cannot be retrieved (e.g., for built-in functions), fallback to name
+            return ""
+
+    def _strip_comments_and_whitespace(source: str) -> str:
+        """
+        Remove comments and extra whitespace from source code string.
+        """
+        # Remove comments (both inline and block comments)
+        source_no_comments = re.sub(r'#.*', '', source)  # Remove inline comments
+        source_no_comments = re.sub(r'"""[\s\S]*?"""', '', source_no_comments)  # Remove block comments (docstrings)
+        source_no_comments = re.sub(r"'''[\s\S]*?'''", '',
+                                    source_no_comments)  # Handle block comments with single quotes
+
+        # Remove empty lines and leading/trailing whitespace
+        return "\n".join([line.strip() for line in source_no_comments.splitlines() if line.strip()])
 
     # Serialize the function name, args, and kwargs
     func_name = serialize(func)
@@ -193,7 +218,7 @@ def async_execute(
             else:
                 original_func = partial(func.__func__, func.__self__)
 
-            if n_days_to_cache > 0:
+            if n_days_to_cache != 0:
                 cache_metadata = load_cache_metadata_json()
                 computed_cache_key = prefix_key + _generate_cache_key(func, *args, **kwargs)
                 already_cached, function_value = cache_exists(cache_metadata, computed_cache_key)
