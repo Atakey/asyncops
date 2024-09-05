@@ -12,7 +12,7 @@ import os
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from functools import partial, wraps
-from types import FunctionType
+from types import FunctionType, MethodType
 from typing import Any, Callable, Generic, Optional, TypeVar
 
 from cache_to_disk import cache_exists, cache_function_value, load_cache_metadata_json
@@ -105,6 +105,10 @@ def _generate_cache_key(func: Callable, *args, **kwargs) -> str:
         """
         Serialize function types, partial objects, and other objects into a string representation.
         """
+        if isinstance(obj, MethodType):
+            # If the method is bound to a class, return the class and method name
+            return f"{obj.__self__.__class__.__module__}.{obj.__self__.__class__.__qualname__}.{obj.__name__}"
+
         # For function types, return module and qualified name
         if isinstance(obj, FunctionType):
             return f"{obj.__module__}.{obj.__qualname__}"
