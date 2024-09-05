@@ -26,7 +26,7 @@ AsyncOps is a Python library that provides asynchronous operation capabilities f
 You can install AsyncOps using pip:
 
 ```
-pip install asyncops
+pip install git+https://github.com/Atakey/asyncops.git
 ```
 
 ## Usage
