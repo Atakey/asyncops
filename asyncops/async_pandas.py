@@ -73,6 +73,9 @@ def series_async_apply(
         # Retrieve the result once the task is complete
         result = result_task.get_result()
     """
+    if workers <= 1:
+        future = async_execute(series.apply, n_days_to_cache=n_days_to_cache)(func, **kwargs)
+        return future
     from pandarallel.data_types import Series
     parallelize = parallelize_with_pipe
     progress_bars = (
@@ -136,6 +139,9 @@ def dataframe_async_apply(
         # Retrieve the result once the task is complete
         result = result_task.get_result()
     """
+    if workers <= 1:
+        future = async_execute(df.apply, n_days_to_cache=n_days_to_cache)(func, **kwargs)
+        return future
     from pandarallel.data_types import DataFrame
     parallelize = parallelize_with_pipe
     progress_bars = (
@@ -200,6 +206,9 @@ def groupby_async_apply(
         # Retrieve the result once the task is complete
         result = result_task.get_result()
     """
+    if workers <= 1:
+        future = async_execute(df.apply, n_days_to_cache=n_days_to_cache)(func, **kwargs)
+        return future
     from pandarallel.data_types import DataFrameGroupBy
     parallelize = parallelize_with_pipe
     progress_bars = (
@@ -211,63 +220,3 @@ def groupby_async_apply(
 
     future = async_execute(df.parallel_apply, n_days_to_cache=n_days_to_cache)(func, **kwargs)
     return future
-
-
-if __name__ == '__main__':
-    import time
-
-    dataf = pd.DataFrame({
-        'text': ['This is a sentence.', 'Another sentence.', 'Yet another one.']
-    })
-
-    task1 = series_async_apply(dataf['text'], len)
-    dataf['text_len'] = task1._get_result()
-
-    dataf = pd.DataFrame({
-        'col1': [1, 2, 3, 4],
-        'col2': [5, 6, 7, 8]
-    })
-
-    # Apply function to each row
-    task2 = dataframe_async_apply(dataf, lambda row: row['col1'] + row['col2'], axis=1)
-    dataf['sum'] = task2._get_result()
-
-
-    def text_clean(text: str):
-        """
-        对文本进行清洗
-        :param text: 输入的文本
-        :return: 清洗后的文本
-        """
-        import re
-        from jionlp import clean_text
-        text = clean_text(text, remove_parentheses=False)
-        text = re.sub('<(img|image)[^>]*(alt|desc|data-name|title)="([^"]+)"[^>]*?/>',
-                      lambda x: '[' + x.group(3).strip() + ']', text)
-        text = re.sub('<em\s[^>]*(class|style|channel_name|alt)="([^"]*)"[^>]*?>', "[图片]", text)
-        text = re.sub(
-            '(\s)(\s+)',
-            lambda t: '\n' if re.search('\n', t.group(2)) else t.group(1),
-            text
-        )
-        return text.strip()
-
-
-    dataf = pd.read_csv(
-        r"../../search-content-query-intent-classifier-service\tests\20240830_pool_topic_corpus.csv.gz",
-        usecols=['content'], nrows=20_0000).fillna("")
-    dataf1 = dataf[:10_0000]
-    dataf2 = dataf[10_0000:]
-
-    dataf1['t7'] = series_async_apply(dataf1['content'], text_clean, n_days_to_cache=1)._get_result()
-    dataf2['t7'] = series_async_apply(dataf2['content'], text_clean, n_days_to_cache=1)._get_result()
-    print(sum(x1 == x2 for x1, x2 in zip(dataf1['t7'], dataf2['t7'])), len(dataf1))
-
-    begin = time.time()
-    task7 = series_async_apply(dataf['content'], text_clean, n_days_to_cache=1)
-    dataf['t7'] = task7._get_result()
-    print(time.time() - begin)
-
-    begin = time.time()
-    dataf['t8'] = dataf['content'].apply(text_clean)
-    print(time.time() - begin)
